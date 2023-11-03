@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Check if the correct number of arguments is provided
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <runid> <sampleid>"
+    echo "Make sure to `conda activate /home/khhor/conda/envs/mlst/` before running the script."
+    exit 1
+fi
+
+# Extract arguments
+runid=$1
+sampleid=$2
+
+# Extract YYYY from runid
+YYYY=${runid:1:4}
+
+# Change directory
+cd "/home/mdu/qc/$YYYY/$runid" || { echo "Directory not found"; exit 1; }
+
+echo "Output for shovill:"
+# Run mlst with the specified parameters
+mlst --blastdb /home/mdu/pipelines/qc2/db/mlst/mlst/db/blast/mlst.fa --datadir /home/mdu/pipelines/qc2/db/mlst/mlst/db/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/shovill/current/contigs.fa
+
+echo "Output for skesa:"
+mlst --blastdb /home/mdu/pipelines/qc2/db/mlst/mlst/db/blast/mlst.fa --datadir /home/mdu/pipelines/qc2/db/mlst/mlst/db/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/skesa/current/skesa.fa
