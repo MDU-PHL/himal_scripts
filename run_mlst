@@ -3,7 +3,11 @@
 # Check if the correct number of arguments is provided
 if [ "$#" -ne 2 ]; then
     echo "Usage: $0 <runid> <sampleid>"
-    echo "Make sure to `conda activate /home/khhor/conda/envs/mlst/` before running the script."
+    echo "++++++++++"
+    echo "Make sure to: "
+    echo "conda activate /home/khhor/conda/envs/mlst/" 
+    echo "before running the script."
+    echo "++++++++++"
     exit 1
 fi
 
@@ -16,6 +20,10 @@ YYYY=${runid:1:4}
 
 # Change directory
 cd "/home/mdu/qc/$YYYY/$runid" || { echo "Directory not found"; exit 1; }
+
+echo "Output for spades:"
+# Run mlst with the specified parameters
+mlst --blastdb /home/mdu/pipelines/qc2/db/mlst/mlst/db/blast/mlst.fa --datadir /home/mdu/pipelines/qc2/db/mlst/mlst/db/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/spades/spades.fa
 
 echo "Output for shovill:"
 # Run mlst with the specified parameters
