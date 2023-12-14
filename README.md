@@ -14,7 +14,7 @@ cd himal_scripts
 chmod +x *.sh
 ```
 
-### run_mlst
+### `run_mlst`
 
 This script checks the MLST outputs for a sample with genomes assembled using `spades`, `shovill` and `skesa`. It takes two arguments: the `run ID` and the `sample ID`.
 
@@ -27,7 +27,7 @@ conda activate /home/khhor/conda/envs/mlst/
 
 This will output the MLST scheme using genomes from each assembly method.
 
-### test-hicap-run.sh
+### `test-hicap-run.sh`
 
 This script runs hicap on a set of samples. It takes one argument: a file containing the sample IDs, one per line.
 
@@ -54,6 +54,29 @@ Finally, you can run the script with the following command:
 
 This will run hicap on each sample and generate a folder called `hicap_ssummary` files in the current directory, which contains the hicap results for each sample.
 
+### `seqkit-pcr.sh`
+
+This script runs in sillico PCR on a fasta file using `seqkit amplicon`. It takes two arguments: a file containing the primer information (`primer_info`) and a file containing sample_IDs (`sample_ids`).
+1. `primer_info` file should contain the following information as a tab separated file, example:
+```
+Serotype  Forward primer  Reverse primer
+Hia   GGTCTGCGGTGTCCTGTGT   CCGGTCATCTTTTATGCTCCAA
+Hib GGGGGGGGGGGGGGGGGGG   CCCCCCCCCCCCCCCCCCCC
+```
+
+2. `sample_IDs` file should contain the sample IDs, one per line, example:
+```
+2015-11111
+2015-11112
+2015-11113
+```
+
+Usage:
+```bash
+./seqkit-pcr.sh primer_info sample_ids
+```
+
+This will output the PCR results for each sample_IDs tested for a different serotype in the file `detection_results.csv` and detailed PCR results for each sample in the folder `detailed_results`.
 
 ## Contributing
 
