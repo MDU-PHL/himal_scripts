@@ -1,0 +1,77 @@
+import pathlib
+
+def samples(path):
+    """
+    Get a list of sample names from the given path.
+
+    Args:
+        path (Path): The path to the directory containing the sample files.
+
+    Returns:
+        list: A list of sample names without the '.fa' extension.
+    """
+    samples = [f"{p.name}".strip(".fa") for p in path.iterdir() if 'fa' in p.suffix]
+    return samples
+
+SAMPLES = samples(pathlib.Path('data/genomes_fasta'))
+
+rule all:
+    input:
+        expand("reads/{sample}/{sample}_{cov}_{R}.fq.gz", sample = SAMPLES, R = [1,2], cov = ['40','60','80','150', '100']),
+        expand("{sample}_{cov}.fa", sample = SAMPLES, cov = ['40','60','80','150', '100']) # ,
+        # "matrix.tab",
+        # "tree.dnd"
+
+rule art:
+    input:
+        "data/genomes_fasta/{sample}.fa"
+    output:
+        "reads/{sample}/{sample}_{cov}_1.fq",
+        "reads/{sample}/{sample}_{cov}_2.fq"
+    conda:
+        "envs/environment.yml"
+    shell:
+        """
+        art_illumina -1 /home/khhor/adhoc/panic_stations/R1M2023-00326.txt -2 /home/khhor/adhoc/panic_stations/R2M2023-00326.txt -na -p -i {input} -l 150 -f {wildcards.cov} -m 380 -s 120 -o reads/{wildcards.sample}/{wildcards.sample}_{wildcards.cov}_
+        """
+
+rule zip:
+    input:
+        "reads/{sample}/{sample}_{cov}_1.fq",
+        "reads/{sample}/{sample}_{cov}_2.fq"
+    output:
+        "reads/{sample}/{sample}_{cov}_1.fq.gz",
+        "reads/{sample}/{sample}_{cov}_2.fq.gz"
+    shell:
+        """
+        gzip -f reads/{wildcards.sample}/{wildcards.sample}_{wildcards.cov}_*
+        """
+
+rule assemble:
+    input:
+        r1 = "reads/{sample}/{sample}_{cov}_1.fq.gz",
+        r2 = "reads/{sample}/{sample}_{cov}_2.fq.gz"
+    output:
+        "{sample}_{cov}.fa"
+    conda:
+        "envs/env_shovill.yml"
+    shell:
+        """
+        shovill --R1 {input.r1} --R2 {input.r2} --outdir assemblies/{wildcards.sample}_{wildcards.cov}/ --force --cpus 8 --ram 16 --minlen 500
+        cp assemblies/{wildcards.sample}_{wildcards.cov}/contigs.fa {wildcards.sample}_{wildcards.cov}.fa
+        """
+
+
+# rule mash:
+#     input:
+#         expand("{sample}_{cov}.fa", sample = SAMPLES, cov = ['40','60','80','150'])
+#     output:
+#         "matrix.tab",
+#         "tree.dnd"
+#     conda:
+#         "envs/mashtree.yml"
+#     shell:
+#         """
+#         ls *fa > ids.txt
+#         mashtree --file-of-files ids.txt --genomesize 5500000 --outmatrix matrix.tab --outtree tree.dnd
+#         """

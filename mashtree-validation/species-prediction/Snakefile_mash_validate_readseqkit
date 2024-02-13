@@ -1,0 +1,70 @@
+import pathlib
+
+def samples(path):
+    """
+    Get a list of sample names from the given path.
+
+    Args:
+        path (Path): The path to the directory containing the sample files.
+
+    Returns:
+        list: A list of sample names without the '.fa' extension.
+    """
+    samples = [f"{p.name}".strip(".fa") for p in path.iterdir() if 'fa' in p.suffix]
+    return samples
+
+SAMPLES = samples(pathlib.Path('data/genomes_fasta'))
+
+COVS = ['40', '60', '80', '100', '150']
+
+rule all:
+    input:
+        expand("mash_query_output/{sample}_{cov}/matrix_{sample}_{cov}.tab", sample = SAMPLES, cov = COVS),
+        expand("mash_query_output/{sample}_{cov}/tree_{sample}_{cov}.dnd", sample = SAMPLES, cov = COVS),
+        expand("mash_query_output/{sample}_{cov}/{sample}_{cov}_output.csv", sample=SAMPLES, cov=COVS),
+        expand("mash_query_output/{sample}_{cov}/{sample}_{cov}_seq_reads.tab", sample=SAMPLES, cov=COVS),
+        "mash_query_output/collated_output.xlsx"
+      
+rule mash_query:
+    input:
+        expand("reads/{sample}/{sample}_{cov}_1.fq.gz", sample = SAMPLES, cov = COVS)
+    output:
+        matrix = "mash_query_output/{sample}_{cov}/matrix_{sample}_{cov}.tab",
+        tree = "mash_query_output/{sample}_{cov}/tree_{sample}_{cov}.dnd",
+        seq_reads = "mash_query_output/{sample}_{cov}/{sample}_{cov}_seq_reads.tab"
+    conda:
+        "envs/mashtree.yml"
+    shell:
+        """
+        mkdir -p mash_query_output/{wildcards.sample}_{wildcards.cov}
+        genus_name=$(echo {wildcards.sample} | cut -d'_' -f1)
+        ls /home/mdu/resources/genomes/refseq/complete/bacteria/$genus_name/*/*/*Z*.gz > mash_query_output/{wildcards.sample}_{wildcards.cov}/ids_{wildcards.sample}_{wildcards.cov}.txt
+        echo reads/{wildcards.sample}*/{wildcards.sample}_{wildcards.cov}_1.fq.gz >> mash_query_output/{wildcards.sample}_{wildcards.cov}/ids_{wildcards.sample}_{wildcards.cov}.txt
+        mashtree --file-of-files mash_query_output/{wildcards.sample}_{wildcards.cov}/ids_{wildcards.sample}_{wildcards.cov}.txt --outmatrix {output.matrix} --outtree {output.tree}
+        zcat reads/{wildcards.sample}*/{wildcards.sample}_{wildcards.cov}_1.fq.gz | seqkit stats > {output.seq_reads}
+        """
+
+rule analyse_genome_distances:
+    input:
+        matrix = "mash_query_output/{sample}_{cov}/matrix_{sample}_{cov}.tab",
+        seq_reads = "mash_query_output/{sample}_{cov}/{sample}_{cov}_seq_reads.tab"
+    output:
+        "mash_query_output/{sample}_{cov}/{sample}_{cov}_output.csv"
+    shell:
+        """
+        python bin/analyse_genome_distances_reads.py {input.matrix} {wildcards.sample}_{wildcards.cov} mash_query_output/{wildcards.sample}_{wildcards.cov}/ {input.seq_reads}
+        """
+        
+rule collate_csv_files:
+    input:
+        csv_files = expand("mash_query_output/{sample}_{cov}/{sample}_{cov}_output.csv", sample=SAMPLES, cov=COVS)
+    output:
+        xlsx_file = "mash_query_output/collated_output.xlsx"
+    run:
+        import pandas as pd
+
+        # Read all CSV files and concatenate them into a single DataFrame
+        df = pd.concat([pd.read_csv(f) for f in input.csv_files])
+
+        # Write the DataFrame to an Excel file
+        df.to_excel(output.xlsx_file, index=False)

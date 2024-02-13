@@ -17,7 +17,7 @@ start_time=$(date +%s)
 # Read the primer_info file and store the data in an array
 declare -A primers
 echo "Reading primer_info file..."
-while read -r line; do
+while IFS= read -r line || [[ -n "$line" ]]; do
     if $first_line; then
         first_line=false
         continue
