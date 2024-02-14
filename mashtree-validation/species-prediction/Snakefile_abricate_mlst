@@ -1,0 +1,75 @@
+import pathlib
+
+def samples(path):
+    """
+    Get a list of sample names from the given path.
+
+    Args:
+        path (Path): The path to the directory containing the sample files.
+
+    Returns:
+        list: A list of sample names without the '.fa' extension.
+    """
+    samples = [f"{p.name}".strip(".fa") for p in path.iterdir() if 'fa' in p.suffix]
+    return samples
+
+SAMPLES = samples(pathlib.Path('data/genomes_fasta'))
+COVERAGES = ['40','60','80','150', '100']
+
+rule all:
+    input:
+        expand("abricate_output/{sample}_{cov}_abricate_output.csv", sample = SAMPLES, cov = COVERAGES),
+        "abricate_output/collated_abricate_output.xlsx",
+        expand("mlst_output/{sample}_{cov}_mlst_output.txt", sample = SAMPLES, cov = COVERAGES),
+        "mlst_output/collated_mlst_output.txt"
+
+rule abricate:
+    input:
+        "{sample}_{cov}.fa"
+    output:
+        "abricate_output/{sample}_{cov}_abricate_output.csv"
+    conda:
+        "envs/abricate.yml"
+    shell:
+        """
+        mkdir -p abricate_output
+        abricate {input} --db vfdb --csv > {output}
+        """
+rule collate_csv_files:
+    input:
+        csv_files = expand("abricate_output/{sample}_{cov}_abricate_output.csv", sample=SAMPLES, cov=COVERAGES)
+    output:
+        xlsx_file = "abricate_output/collated_abricate_output.xlsx"
+    run:
+        import pandas as pd
+
+        # Read all CSV files and concatenate them into a single DataFrame
+        df = pd.concat([pd.read_csv(f) for f in input.csv_files])
+
+        # Write the DataFrame to an Excel file
+        df.to_excel(output.xlsx_file, index=False)
+
+rule mlst:
+    input:
+        "{sample}_{cov}.fa"
+    output:
+        "mlst_output/{sample}_{cov}_mlst_output.txt"
+    conda:
+        "envs/mlst.yml"
+    shell:
+        """
+        mkdir -p mlst_output
+        mlst {input} --quiet > {output}
+        """
+
+rule collate_txt_files:
+    input:
+        txt_files = expand("mlst_output/{sample}_{cov}_mlst_output.txt", sample=SAMPLES, cov=COVERAGES)
+    output:
+        txt_file = "mlst_output/collated_mlst_output.txt"
+    run:
+        with open(output.txt_file, 'w') as outfile:
+            for fname in input.txt_files:
+                with open(fname) as infile:
+                    for line in infile:
+                        outfile.write(line)
