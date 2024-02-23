@@ -1,0 +1,48 @@
+#!/bin/bash
+
+usage() {
+    echo "+++++++++++"
+    echo "Usage: $0 <id> <path_to_contigs>"
+    echo "Runs the mdu-hicap function with the sample ID and path to contigs."
+    echo "++++++++++"
+    echo "To run parallel jobs, use the following command:"
+    echo "Prepare a file called contigs.tab with sample IDs and paths to contigs. using mdu contigs --idfile"
+    echo "parallel --colsep '\t' mdu-hicap :::: contigs.tab"
+    echo "++++++++++"
+    echo "Make sure to: "
+    echo "conda activate /home/himals/.conda/envs/hicap_dev/"
+    echo "before running the script."
+    echo "++++++++++"
+}
+
+# Define the function that will be run in parallel
+mdu-hicap() {
+    if [ $# -ne 2 ]; then
+        usage
+        exit 1
+    fi
+
+    id=$1
+    path_contigs=$2
+    
+    # make temporary copy of contigs
+    cp $path_contigs $id.fa
+    mkdir -p output/$id
+    hicap --query_fp $id.fa --output_dir output/$id
+
+    # check if id.tsv exists in output directory
+    if [[ ! -f "output/$id/$id.tsv" ]]; then
+        # The file doesn't exist, generate id.tsv
+        echo -e "#isolate\tpredicted_serotype\tattributes\tgenes_identified\tlocus_location\tregion_I_genes\tregion_II_genes\tregion_III_genes\tIS1016_hits" > "output/$id/$id.tsv"
+        echo -e "${id}\tno hits to any cap locus gene found\tno hits to any cap locus gene found\tno hits to any cap locus gene found\tno hits to any cap locus gene found\tno hits to any cap locus gene found\tno hits to any cap locus gene found\tno hits to any cap locus gene found\tno hits to any cap locus gene found" >> "output/$id/$id.tsv"
+    fi
+
+    rm -f $id.fa
+}
+
+export -f mdu-hicap
+
+# If the script is run directly (not sourced), run the function with the command-line arguments
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    mdu-hicap "$@"
+fi

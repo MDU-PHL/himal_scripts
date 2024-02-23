@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Define the directory containing the .tsv files
+dir="output"
+
+# Check if the directory exists
+if [ ! -d "$dir" ]; then
+    echo "Directory $dir does not exist."
+    exit 1
+fi
+
+# Combine the output
+summary_fps=($dir/*/*.tsv)
+{ head -n1 "${summary_fps[0]}"; for file in "${summary_fps[@]}"; do sed '/^#/d' "$file"; done; } > hicap_summary.tab
+
+# Check if csvtk is installed
+if ! command -v csvtk &> /dev/null
+then
+    echo "csvtk could not be found, please install it first."
+    exit
+fi
+
+# Convert tsv to csv
+sed '1s/^#//' hicap_summary.tab | csvtk tab2csv > hicap_summary.csv
+
+rm -f hicap_summary.tab
