@@ -1,0 +1,41 @@
+configfile: "config.yaml"
+
+# Get the list of samples
+samples = [line.strip() for line in open(f"{config['RUN_ID']}/sample.txt") if line.strip()]
+
+rule all:
+    input:
+        expand("/home/mdu/reads/{run_id}_onboard/{sample}/{sample}_R1.fastq.gz", run_id=config['RUN_ID'], sample=samples),
+        expand("/home/mdu/reads/{run_id}_onboard/{sample}/{sample}_R2.fastq.gz", run_id=config['RUN_ID'], sample=samples),
+        expand("/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}_R1_trim.fastq.gz", run_id=config['RUN_ID'], sample=samples),
+        expand("/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}_R2_trim.fastq.gz", run_id=config['RUN_ID'], sample=samples),
+        expand("/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}.fastp.json", run_id=config['RUN_ID'], sample=samples),
+        expand("/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}.fastp.html", run_id=config['RUN_ID'], sample=samples),
+        expand("/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}.fastp.log", run_id=config['RUN_ID'], sample=samples)
+
+rule concatenate_fastq:
+    output:
+        r1 = "/home/mdu/reads/{run_id}_onboard/{sample}/{sample}_R1.fastq.gz",
+        r2 = "/home/mdu/reads/{run_id}_onboard/{sample}/{sample}_R2.fastq.gz"
+    shell:
+        """
+        mkdir -p /home/mdu/reads/{wildcards.run_id}_onboard/{wildcards.sample}
+        cat {config[instrument_path]}/Alignment_1/*/Fastq/{wildcards.sample}*R1* > {output.r1}
+        cat {config[instrument_path]}/Alignment_1/*/Fastq/{wildcards.sample}*R2* > {output.r2}
+        """
+
+rule trim_fastq:
+    input:
+        r1 = "/home/mdu/reads/{run_id}_onboard/{sample}/{sample}_R1.fastq.gz",
+        r2 = "/home/mdu/reads/{run_id}_onboard/{sample}/{sample}_R2.fastq.gz"
+    output:
+        out1 = "/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}_R1_trim.fastq.gz",
+        out2 = "/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}_R2_trim.fastq.gz",
+        json = "/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}.fastp.json",
+        html = "/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}.fastp.html",
+        log = "/home/mdu/reads/{run_id}_onboard_trim/{sample}/{sample}.fastp.log"
+    shell:
+        """
+        mkdir -p /home/mdu/reads/{wildcards.run_id}_onboard_trim/{wildcards.sample}
+        /home/himals/fastp --in1 {input.r1} --in2 {input.r2} --out1 {output.out1} --out2 {output.out2} --json {output.json} --html {output.html} --thread 50 --detect_adapter_for_pe --trim_poly_g --trim_poly_x 2> {output.log}
+        """
