@@ -23,11 +23,11 @@ cd "/home/mdu/qc/$YYYY/$runid" || { echo "Directory not found"; exit 1; }
 
 echo "Output for spades:"
 # Run mlst with the specified parameters
-mlst --quiet --blastdb /home/mdu/pipelines/qc2/db/mlst/mlst/db/blast/mlst.fa --datadir /home/mdu/pipelines/qc2/db/mlst/mlst/db/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/spades/spades.fa
+mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/spades/spades.fa
 
 echo "Output for shovill:"
 # Run mlst with the specified parameters
-mlst --quiet --blastdb /home/mdu/pipelines/qc2/db/mlst/mlst/db/blast/mlst.fa --datadir /home/mdu/pipelines/qc2/db/mlst/mlst/db/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/shovill/current/contigs.fa
+mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/shovill/current/contigs.fa
 
 echo "Output for skesa:"
-mlst --quiet --blastdb /home/mdu/pipelines/qc2/db/mlst/mlst/db/blast/mlst.fa --datadir /home/mdu/pipelines/qc2/db/mlst/mlst/db/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/skesa/current/skesa.fa
+mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/skesa/current/skesa.fa
