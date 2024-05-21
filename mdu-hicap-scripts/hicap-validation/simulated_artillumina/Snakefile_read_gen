@@ -1,0 +1,79 @@
+import pathlib
+
+def samples(path):
+    samples = [f"{p.name}".strip(".fa") for p in path.iterdir() if 'fa' in p.suffix]
+    return samples
+
+SAMPLES = samples(pathlib.Path('.'))
+
+rule all:
+    input:
+        expand("reads/{sample}/{sample}_{cov}_{R}.fq.gz", sample = SAMPLES, R = [1,2], cov = ['40','60','80','150']),
+        expand("final_assemblies/{sample}_{cov}.fa", sample = SAMPLES, cov = ['40','60','80','150']),
+        "hicap_summary.csv",
+        "detection_results_wide.csv"
+
+rule art:
+    input:
+        "{sample}.fa"
+    output:
+        "reads/{sample}/{sample}_{cov}_1.fq",
+        "reads/{sample}/{sample}_{cov}_2.fq"
+    conda:
+        "envs/environment.yml"
+    shell:
+        """
+        art_illumina -1 /home/khhor/adhoc/panic_stations/R1M2023-00326.txt -2 /home/khhor/adhoc/panic_stations/R2M2023-00326.txt -na -p -i {input} -l 150 -f {wildcards.cov} -m 380 -s 120 -o reads/{wildcards.sample}/{wildcards.sample}_{wildcards.cov}_
+        """
+
+rule zip:
+    input:
+        "reads/{sample}/{sample}_{cov}_1.fq",
+        "reads/{sample}/{sample}_{cov}_2.fq"
+    output:
+        "reads/{sample}/{sample}_{cov}_1.fq.gz",
+        "reads/{sample}/{sample}_{cov}_2.fq.gz"
+    shell:
+        """
+        gzip -f reads/{wildcards.sample}/{wildcards.sample}_{wildcards.cov}_*
+        """
+
+rule assemble:
+    input:
+        r1 = "reads/{sample}/{sample}_{cov}_1.fq.gz",
+        r2 = "reads/{sample}/{sample}_{cov}_2.fq.gz"
+    output:
+        "final_assemblies/{sample}_{cov}.fa"
+    conda:
+        "envs/env_shovill.yml"
+    shell:
+        """
+        shovill --R1 {input.r1} --R2 {input.r2} --outdir assemblies/{wildcards.sample}_{wildcards.cov}/ --force --cpus 8 --ram 16 --minlen 500
+        cp assemblies/{wildcards.sample}_{wildcards.cov}/contigs.fa final_assemblies/{wildcards.sample}_{wildcards.cov}.fa
+        """
+
+rule hicap:
+    input:
+        expand("final_assemblies/{sample}_{cov}.fa", sample = SAMPLES, cov = ['40','60','80','150'])
+    output:
+        "hicap_summary.csv"
+    conda:
+        "envs/hicap_dev.yml"
+    shell:
+        """
+        ./bin/hicap-run-summary.sh final_assemblies/
+        """
+
+rule seqkit_pcr:
+    input:
+        primer_info = "bin/primer_info",
+        assemblies = expand("final_assemblies/{sample}_{cov}.fa", sample = SAMPLES, cov = ['40','60','80','150'])
+    output:
+        "detection_results_wide.csv"
+    conda:
+        "envs/hicap_dev.yml"
+    shell:
+        """
+        ./bin/seqkit-pcr.sh {input.primer_info} final_assemblies/
+        python ./bin/spread.py detection_results.csv {output}
+        """
