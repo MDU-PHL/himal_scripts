@@ -1,0 +1,95 @@
+import pandas as pd
+import glob
+import logging
+
+# Set up logging
+logging.basicConfig(filename='pipeline.log', level=logging.INFO)
+
+# Define the required coverage values
+REQUIRED_COVERAGES = [40]
+
+# Read the isolates.tab file
+df_isolates = pd.read_csv('data/isolates.tab', sep='\t')
+
+# Read the coverage.tab file
+df_coverage = pd.read_csv('data/coverage.tab', sep='\t')
+
+# Merge the two dataframes on sample_id
+df = pd.merge(df_isolates, df_coverage, on='sample_id')
+
+# Calculate p_values for required coverage
+for cov in REQUIRED_COVERAGES:
+    df[f'p_{cov}'] = round(cov / df['COVERAGE'],2)
+
+# Print and log the p_values
+for _, row in df.iterrows():
+    for cov in REQUIRED_COVERAGES:
+        logging.info(f"Sample {row['sample_id']}: Required Coverage = {cov}, Current Coverage = {row['COVERAGE']}, p_value = {row[f'p_{cov}']}")
+        print(f"Sample {row['sample_id']}: Required Coverage = {cov}, Current Coverage = {row['COVERAGE']}, p_value = {row[f'p_{cov}']}")
+
+# Define sample_ids
+SAMPLES = df['sample_id'].tolist()
+
+rule all:
+    input:
+        expand("reads/{sample_id}_cov{cov}/{sample_id}_cov{cov}_R{R}.fastq.gz", 
+               sample_id = SAMPLES, 
+               R = [1, 2], 
+               cov = REQUIRED_COVERAGES),
+        expand("final_assemblies/{sample_id}_cov{cov}.fa", 
+               sample_id = SAMPLES, 
+               cov = REQUIRED_COVERAGES),
+        expand("mlst_output/{sample_id}_cov{cov}_mlst.tab", 
+               sample_id = SAMPLES, 
+               cov = REQUIRED_COVERAGES)
+
+# Create a dictionary mapping sample_id to R1 and R2 read files
+SAMPLE_DICT = df.set_index('sample_id')[['R1', 'R2']].to_dict(orient='index')
+
+def get_read_files(wildcards):
+    read_files = SAMPLE_DICT[wildcards.sample_id]
+    return read_files['R1'], read_files['R2']
+
+rule subsample:
+    input:
+        get_read_files
+    output:
+        r1_out = "reads/{sample_id}_cov{cov}/{sample_id}_cov{cov}_R1.fastq.gz",
+        r2_out = "reads/{sample_id}_cov{cov}/{sample_id}_cov{cov}_R2.fastq.gz"
+    params:
+        p_val = lambda wildcards: df.loc[df['sample_id'] == wildcards.sample_id, f'p_{wildcards.cov}'].values[0]
+    conda:
+        "envs/hicap_dev.yml"
+    shell:
+        """
+        mkdir -p reads/{wildcards.sample_id}_cov{wildcards.cov}
+        echo "Sample {wildcards.sample_id}, Cov {wildcards.cov}, p_value {params.p_val}" | tee -a pipeline.log
+        seqkit sample -p {params.p_val} -o {output.r1_out} {input[0]}
+        seqkit sample -p {params.p_val} -o {output.r2_out} {input[1]}
+        """
+
+rule assemble:
+    input:
+        r1 = "reads/{sample_id}_cov{cov}/{sample_id}_cov{cov}_R1.fastq.gz",
+        r2 = "reads/{sample_id}_cov{cov}/{sample_id}_cov{cov}_R2.fastq.gz"
+    output:
+        "final_assemblies/{sample_id}_cov{cov}.fa"
+    conda:
+        "envs/env_shovill.yml"
+    shell:
+        """
+        shovill --R1 {input.r1} --R2 {input.r2} --outdir assemblies/{wildcards.sample_id}_cov{wildcards.cov}/ --force --cpus 8 --ram 16 --minlen 500
+        cp assemblies/{wildcards.sample_id}_cov{wildcards.cov}/contigs.fa final_assemblies/{wildcards.sample_id}_cov{wildcards.cov}.fa
+        """
+
+rule mlst:
+    input:
+        "final_assemblies/{sample_id}_cov{cov}.fa"
+    output:
+        "mlst_output/{sample_id}_cov{cov}_mlst.tab"
+    conda:
+        "envs/mlst.yml"
+    shell:
+        """
+        mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath {input} --exclude ecoli > {output}
+        """
