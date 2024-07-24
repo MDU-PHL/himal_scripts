@@ -7,9 +7,9 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser(description="Cluster sequences based on distance matrix.")
-    parser.add_argument('--distances', type=str, default='report/distances.tab', help='Path to the distances.tab file (default: report/distances.tab)')
-    parser.add_argument('--thresholds', type=str, default='1,2,5,10,20', help='Comma-separated list of distance thresholds for clustering (default: 1,2,5,10,20)')
-    parser.add_argument('--output', type=str, default='clusters.csv', help='Name of the output CSV file (default: clusters.csv)')
+    parser.add_argument('-d', '--path_to_distance_file', type=str, default='report/distances.tab', help='Path to the distances.tab file (default: report/distances.tab)')
+    parser.add_argument('-t', '--thresholds', type=str, default='1,2,5,10,20', help='Comma-separated list of distance thresholds for clustering (default: 1,2,5,10,20)')
+    parser.add_argument('-o', '--output', type=str, default='clusters.csv', help='Name of the output CSV file (default: clusters.csv)')
 
     # If no arguments are provided, display the help message
     if len(sys.argv) == 1:
@@ -24,7 +24,7 @@ def main():
     mat = []
     isos = []
 
-    with open(args.distances, 'r') as f:
+    with open(args.path_to_distance_file, 'r') as f:
         lines = f.read().strip().split('\n')
         for line in lines[1:]:
             row = line.split('\t')[1:]
@@ -36,7 +36,7 @@ def main():
 
     for n in thresholds:
         clustering = AgglomerativeClustering(n_clusters=None, metric='precomputed', linkage='single', distance_threshold=n).fit(X)
-        df = pd.DataFrame(data={'Seq_ID': isos, f'Tx:{n}': clustering.labels_})
+        df = pd.DataFrame(data={'Seq_ID': isos, f'Tx:{n}': clustering.labels_ + 1})  # Cluster labels start from 1
         if result.empty:
             result = df
         else:
