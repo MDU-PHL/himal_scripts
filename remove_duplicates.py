@@ -8,6 +8,8 @@ def main():
     parser.add_argument('filename', type=str, help='The CSV file to check for duplicates')
     parser.add_argument('--column', type=str, default='MDU ID', 
                        help='Column name to check for duplicates (default: "MDU ID")')
+    parser.add_argument('--remove-duplicates', action='store_true', 
+                       help='Remove duplicate entries if this flag is passed')
     args = parser.parse_args()
 
     # Read the CSV file
@@ -22,15 +24,18 @@ def main():
         for value, count in duplicate_counts.items():
             print(f"Duplicate entries found for {args.column} {value}: {count} times")
 
-        # Backup the original file
-        backup_filename = args.filename.replace('.csv', '_original.csv')
-        shutil.copyfile(args.filename, backup_filename)
-        print(f"Original file backed up as {backup_filename}")
+        if args.remove_duplicates:
+            # Backup the original file
+            backup_filename = args.filename.replace('.csv', '_original.csv')
+            shutil.copyfile(args.filename, backup_filename)
+            print(f"Original file backed up as {backup_filename}")
 
-        # Remove duplicates and save the cleaned file
-        df_cleaned = df.drop_duplicates(subset=args.column, keep='first')
-        df_cleaned.to_csv(args.filename, index=False)
-        print(f"Duplicate entries removed and saved to {args.filename}")
+            # Remove duplicates and save the cleaned file
+            df_cleaned = df.drop_duplicates(subset=args.column, keep='first')
+            df_cleaned.to_csv(args.filename, index=False)
+            print(f"Duplicate entries removed and saved to {args.filename}")
+        else:
+            print(f"To remove duplicates, run the script with the '--remove-duplicates' flag.")
     else:
         print(f"No duplicate entries found for column '{args.column}'.")
 
