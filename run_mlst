@@ -1,33 +1,56 @@
 #!/bin/bash
 
-# Check if the correct number of arguments is provided
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 <runid> <sampleid>"
-    echo "++++++++++"
-    echo "Make sure to: "
-    echo "conda activate /home/khhor/conda/envs/mlst/" 
-    echo "before running the script."
-    echo "++++++++++"
+# Help function
+show_help() {
+    echo "Usage: $0 <runid> <sampleid> [--blastdb path] [--datadir path]"
+    echo
+    echo "Required arguments:"
+    echo "  runid        Run ID (format: XYYYY...)"
+    echo "  sampleid     Sample ID"
+    echo
+    echo "Optional arguments:"
+    echo "  --blastdb    Path to BLAST database (default: /home/mdu/resources/mlst/blast/mlst.fa)"
+    echo "  --datadir    Path to MLST data directory (default: /home/mdu/resources/mlst/pubmlst)"
+    echo
+    echo "Before running the script:"
+    echo "  conda activate /home/khhor/conda/envs/mlst/"
+}
+
+# Default values
+BLASTDB="/home/mdu/resources/mlst/blast/mlst.fa"
+DATADIR="/home/mdu/resources/mlst/pubmlst"
+
+# Parse arguments
+if [ "$#" -lt 2 ]; then
+    show_help
     exit 1
 fi
 
-# Extract arguments
 runid=$1
 sampleid=$2
+shift 2
+
+# Parse optional arguments
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --blastdb) BLASTDB="$2"; shift 2;;
+        --datadir) DATADIR="$2"; shift 2;;
+        --help|-h) show_help; exit 0;;
+        *) echo "Unknown parameter: $1"; show_help; exit 1;;
+    esac
+done
 
 # Extract YYYY from runid
 YYYY=${runid:1:4}
 
 # Change directory
-cd "/home/mdu/qc/$YYYY/$runid" || { echo "Directory not found"; exit 1; }
+# cd "/home/mdu/qc/$YYYY/$runid" || { echo "Directory not found"; exit 1; }
 
 echo "Output for spades:"
-# Run mlst with the specified parameters
-mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/spades/spades.fa --exclude ecoli
+mlst --quiet --blastdb "$BLASTDB" --datadir "$DATADIR" --nopath /home/mdu/data/"$runid"/"$sampleid"/spades/spades.fa --exclude ecoli
 
 echo "Output for shovill:"
-# Run mlst with the specified parameters
-mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/shovill/current/contigs.fa --exclude ecoli
+mlst --quiet --blastdb "$BLASTDB" --datadir "$DATADIR" --nopath /home/mdu/data/"$runid"/"$sampleid"/shovill/current/contigs.fa --exclude ecoli
 
 echo "Output for skesa:"
-mlst --quiet --blastdb /home/mdu/resources/mlst/blast/mlst.fa --datadir /home/mdu/resources/mlst/pubmlst --nopath /home/mdu/data/"$runid"/"$sampleid"/skesa/current/skesa.fa --exclude ecoli
+mlst --quiet --blastdb "$BLASTDB" --datadir "$DATADIR" --nopath /home/mdu/data/"$runid"/"$sampleid"/skesa/current/skesa.fa --exclude ecoli
