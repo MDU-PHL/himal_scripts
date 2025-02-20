@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-import typer
+import argparse
 import pandas as pd
 import glob
 from pathlib import Path
-from typing import Optional
 import warnings
+from tqdm import tqdm
+
 
 # Add this after imports to suppress all warnings
 warnings.filterwarnings('ignore')
-
-app = typer.Typer()
 
 def read_sample_ids(ids_file: Path) -> list:
     """Read sample IDs from the input file."""
     with open(ids_file) as f:
         return [line.strip() for line in f if line.strip()]
-
 
 def check_cic_status(sample_id: str, distribute_tables: list, verbose: bool = False) -> str:
     """Check CiC status for a given sample ID across distribute tables."""
@@ -23,9 +21,8 @@ def check_cic_status(sample_id: str, distribute_tables: list, verbose: bool = Fa
     
     for table_path in distribute_tables:
         try:
-            # Add debug output only if verbose
             if verbose:
-                typer.echo(f"Checking file: {table_path}")
+                print(f"Checking file: {table_path}")
             
             # Read file with explicit encoding and handle whitespace
             df = pd.read_csv(table_path, sep='\t', encoding='utf-8', skipinitialspace=True)
@@ -44,58 +41,80 @@ def check_cic_status(sample_id: str, distribute_tables: list, verbose: bool = Fa
                 if cic_col:
                     cic_value = str(sample_row[cic_col].iloc[0]).lower().strip()
                     if verbose:
-                        typer.echo(f"Found sample with CiC value: {cic_value}")
+                        print(f"Found sample with CiC value: {cic_value}")
                     return "Yes" if cic_value == "yes" else "No"
                 else:
                     if verbose:
-                        typer.echo(f"Sample found but no CiC column in {table_path}")
+                        print(f"Sample found but no CiC column in {table_path}")
                     return "No"  # If no CiC column exists, treat as not a CiC sample
             else:
                 if verbose:
-                    typer.echo(f"Sample {sample_id} not found in {table_path}")
+                    print(f"Sample {sample_id} not found in {table_path}")
                 
         except Exception as e:
             if verbose:
-                typer.echo(f"Warning: Error processing {table_path}: {e}", err=True)
+                print(f"Warning: Error processing {table_path}: {e}", file=sys.stderr)
             continue
     
     return "Not found"
 
-@app.command()
-def main(
-    ids_file: Path = typer.Argument(..., help="Path to file containing sample IDs"),
-    output_file: Path = typer.Option("cic_results.csv", help="Path to output CSV file"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
-):
+def main():
     """Check CiC status for samples listed in the input file."""
+    parser = argparse.ArgumentParser(
+        description="Check CiC status for samples listed in the input file."
+    )
+
+    parser.add_argument(
+        "ids_file",
+        type=Path,
+        help="Path to file containing sample IDs"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        type=Path,
+        default="cic_results.csv",
+        help="Path to output CSV file (default: cic_results.csv)"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose output"
+    )
+    
+    args = parser.parse_args()
+
     # Validate input file
-    if not ids_file.exists():
-        typer.echo(f"Error: Input file {ids_file} not found", err=True)
-        raise typer.Exit(1)
+    if not args.ids_file.exists():
+        print(f"Error: Input file {args.ids_file} not found", file=sys.stderr)
+        sys.exit(1)
 
     # Get all distribute table files
     distribute_tables = glob.glob("/home/mdu/qc/*/*/distribute_table.txt*")
     if not distribute_tables:
-        typer.echo("Error: No distribute tables found", err=True)
-        raise typer.Exit(1)
+        print("Error: No distribute tables found", file=sys.stderr)
+        sys.exit(1)
 
     # Read sample IDs
-    sample_ids = read_sample_ids(ids_file)
+    sample_ids = read_sample_ids(args.ids_file)
     if not sample_ids:
-        typer.echo("Error: No sample IDs found in input file", err=True)
-        raise typer.Exit(1)
+        print("Error: No sample IDs found in input file", file=sys.stderr)
+        sys.exit(1)
 
-    # Process each sample
+    # Process each sample with progress bar
     results = []
-    with typer.progressbar(sample_ids, label="Processing samples") as progress:
-        for sample_id in progress:
-            status = check_cic_status(sample_id, distribute_tables, verbose)
+    with tqdm(total=len(sample_ids), desc="Processing samples") as pbar:
+        for sample_id in sample_ids:
+            if args.verbose:
+                print(f"\nProcessing: {sample_id}")
+            status = check_cic_status(sample_id, distribute_tables, args.verbose)
             results.append({"Sample ID": sample_id, "CiC": status})
+            pbar.update(1)
 
     # Save results
     df = pd.DataFrame(results)
-    df.to_csv(output_file, index=False)
-    typer.echo(f"Results saved to {output_file}")
-    
+    df.to_csv(args.output, index=False)
+    print(f"\nResults saved to {args.output}")
+
 if __name__ == "__main__":
-    app()
+    main()
+    
