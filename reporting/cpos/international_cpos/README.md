@@ -1,5 +1,7 @@
 # International CPO Investigation Guide
 
+ This guide outlines a systematic approach to investigate potential international transmission events using genomic epidemiology.
+
 ## Setup and Data Collection
 
 1. **Identify target CPO genes and sequence types**
@@ -97,12 +99,14 @@ Note: This guide was prepared while investigating *Klebsiella pneumoniae* carryi
 ## Visualization and Interpretation
 
 9. **Generate ASCII tree visualization**
+   The script generates an ASCII tree visualization of the phylogenetic tree. This can be useful for quick visualization in the terminal and for copying sample IDs for further analysis. 
    ```sh
    python /home/himals/3_resources/github-repos/himal_scripts/bohra/ascii_tree.py \
      -f mashtree_analysis/tree_kpc3_pathogen_detection.dnd
    ```
 
-10. **Filter metadata and identify closest genomes**
+10. **Filter metadata and identify closest genomes using mash-distance matrix**
+    First, filter the metadata to include only the genomes in the matrix. Information for the MDU isolates need to be manually added to the metadata file before running the `analyze_mash.py` script.
     ```sh
     # Filter metadata for genomes in analysis
     python filter_metadata.py \
@@ -110,6 +114,8 @@ Note: This guide was prepared while investigating *Klebsiella pneumoniae* carryi
       -m kpneumo_kpc3_pathogen_detection.csv \
       -o mashtree_analysis/filtered_kpneumo_kpc3_pathogen_detection.csv
     
+    # Manually add metadata for MDU samples to the filtered metadata file
+
     # Find closest genomes to query sample
     # Replace <sample-id> with your sample of interest
     python /home/himals/3_resources/github-repos/himal_scripts/bohra/analyze_mash.py \
@@ -119,7 +125,7 @@ Note: This guide was prepared while investigating *Klebsiella pneumoniae* carryi
       --columns geoLocName
     ```
 
-11. **Generate publication-quality tree**
+11. **Generate better-quality tree using `ggtree`**
     ```sh
     ca my_renv
     
