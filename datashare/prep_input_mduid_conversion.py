@@ -38,6 +38,25 @@ def extract_item_code(sample_id):
     # No item code found
     return ""
 
+def get_base_id(sample_id):
+    """
+    Get the base ID without the item code.
+    
+    Args:
+        sample_id (str): The full sample ID
+        
+    Returns:
+        str: The base ID without the item code
+    """
+    parts = sample_id.strip().split('-')
+    
+    # If there are 3 or more parts, return only the first two parts
+    if len(parts) >= 3:
+        return '-'.join(parts[0:2])
+    
+    # If there are fewer than 3 parts, the whole ID is the base ID
+    return sample_id
+
 
 def convert_ids(input_file, output_file):
     """
@@ -65,7 +84,8 @@ def convert_ids(input_file, output_file):
                     continue  # Skip empty lines and comments
                 
                 item_code = extract_item_code(line)
-                writer.writerow([line, item_code])
+                base_id = get_base_id(line)
+                writer.writerow([base_id, item_code])
                 processed += 1
                 
         return processed
@@ -73,6 +93,7 @@ def convert_ids(input_file, output_file):
     except Exception as e:
         print(f"Error processing files: {e}", file=sys.stderr)
         return 0
+
 
 
 def main():
@@ -94,8 +115,8 @@ Input file format:
 Output CSV format:
   MDU sample ID,Item code
   2017-XXXXX,
-  2017-YYYY-2,2
-  2017-XXXXX-56,56
+  2017-YYYY,2
+  2017-XXXXX,56
 """
     )
     
