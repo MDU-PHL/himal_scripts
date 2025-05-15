@@ -86,12 +86,31 @@ def load_instrument_data(instrument_csv_path):
 
 
 def find_fastq_files(fastq_path, ausmduid):
-    """Find R1 and R2 fastq files for a given ausmduid."""
+    """Find R1 and R2 fastq files for a given ausmduid.
+    
+    First tries to find files with pattern {ausmduid}*R1* and {ausmduid}*R2*.
+    If files are not found, tries alternative patterns {ausmduid}_1.*.gz and {ausmduid}_2.*.gz.
+    """
+    # First try the primary pattern with R1/R2
     r1_pattern = os.path.join(fastq_path, f"{ausmduid}*R1*")
     r2_pattern = os.path.join(fastq_path, f"{ausmduid}*R2*")
     
     r1_files = glob.glob(r1_pattern)
     r2_files = glob.glob(r2_pattern)
+    
+    # If either R1 or R2 is not found, try the alternative pattern with _1/_2
+    if not r1_files or not r2_files:
+        alt_r1_pattern = os.path.join(fastq_path, f"{ausmduid}_1.*gz")
+        alt_r2_pattern = os.path.join(fastq_path, f"{ausmduid}_2.*gz")
+        
+        alt_r1_files = glob.glob(alt_r1_pattern)
+        alt_r2_files = glob.glob(alt_r2_pattern)
+        
+        # Use alternative files if they exist
+        if alt_r1_files:
+            r1_files = alt_r1_files
+        if alt_r2_files:
+            r2_files = alt_r2_files
     
     r1_file = r1_files[0] if r1_files else "not found"
     r2_file = r2_files[0] if r2_files else "not found"

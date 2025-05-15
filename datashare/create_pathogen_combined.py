@@ -49,14 +49,15 @@ Example usage:
 
 def format_date(date_str: str) -> str:
     """
-    Convert date from DD/MM/YYYY format to MM/DD/YYYY format.
+    Convert various date formats to YYYY-MM-DD format.
+    Handles DD/MM/YYYY and YYYY-MM-DD formats.
     Removes time component if present.
     
     Args:
-        date_str: Date string in format like 14/04/2017 or 28/04/2017 14:25
+        date_str: Date string in various formats
         
     Returns:
-        Date string in MM/DD/YYYY format
+        Date string in YYYY-MM-DD format
     """
     if not date_str or date_str.strip() == "-":
         return ""
@@ -64,14 +65,26 @@ def format_date(date_str: str) -> str:
     # Extract just the date part if time is included
     date_part = date_str.split(" ")[0]
     
-    try:
-        # Parse the date assuming DD/MM/YYYY format
-        parsed_date = datetime.strptime(date_part, "%d/%m/%Y")
-        # Return in MM/DD/YYYY format
-        return parsed_date.strftime("%m/%d/%Y")
-    except ValueError as e:
-        print(f"Warning: Could not parse date '{date_str}': {e}", file=sys.stderr)
-        return ""
+    # Try different date formats
+    date_formats = [
+        ("%d/%m/%Y", "%Y-%m-%d"),  # DD/MM/YYYY -> YYYY-MM-DD
+        ("%Y-%m-%d", "%Y-%m-%d"),  # YYYY-MM-DD -> YYYY-MM-DD (no change needed)
+        ("%d-%m-%Y", "%Y-%m-%d"),  # DD-MM-YYYY -> YYYY-MM-DD
+        ("%m/%d/%Y", "%Y-%m-%d"),  # MM/DD/YYYY -> YYYY-MM-DD
+    ]
+    
+    for input_format, output_format in date_formats:
+        try:
+            # Parse the date with current format
+            parsed_date = datetime.strptime(date_part, input_format)
+            # Return in YYYY-MM-DD format
+            return parsed_date.strftime(output_format)
+        except ValueError:
+            continue
+    
+    # If we get here, none of the formats worked
+    print(f"Warning: Could not parse date '{date_str}': no matching format found", file=sys.stderr)
+    return ""
 
 def is_environmental_sample(row: Dict[str, str], env_terms: List[str]) -> bool:
     """
@@ -146,8 +159,8 @@ def process_lims_data(input_file: str, prjna: str, env_terms_str: Optional[str])
             body_site = row.get('Body site', '')
             specimen_source_type = row.get('Specimen source type', '')
             
-            # Process the genotype value
-            genotype = st if st and st != "-" else ""
+            # Process the genotype value, if ST is present add add "ST" as a prefix
+            genotype = f"ST{st}" if st and st != "-" else ""
             
             # Format the date
             formatted_date = format_date(date_coll)
