@@ -118,7 +118,6 @@ def generate_summary(input_dir, output_dir, base_url="", json_dir=None, metadata
 ## Overview
 
 This report summarises the quality control results for sequencing reads processed with `fastp`.
-The quality control was performed as part of the low coverage investigation project.
 """
 
     # Add fastp version if provided
@@ -194,9 +193,6 @@ Click on each sample below to view the detailed `fastp` report:
     
     # Add footer
     md_content += """
-## Summary
-
-This report includes `fastp` quality control results for all samples processed in the workflow.
 """
     
     # Write markdown file
