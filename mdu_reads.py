@@ -9,6 +9,7 @@ def find_reads(reads_dir, run_id, sample_id):
     if run_id:
         # Search in specific run directory
         base_path = os.path.join(reads_dir, run_id, sample_id)
+        # base_path = os.path.join(reads_dir, run_id) #, sample_id) # for cases where sample_id is not a directory
     else:
         # Search in all run directories
         base_path = os.path.join(reads_dir, "*", sample_id)
