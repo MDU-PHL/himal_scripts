@@ -30,8 +30,8 @@ process RUN_SHIGAPASS {
     memory '4 GB'
     time '2 h'
     
-    // errorStrategy 'retry'
-    // maxRetries 1
+    errorStrategy 'retry'
+    maxRetries 2
     
     input:
     tuple val(genome_id), path(contig_list), path(contig_file)
@@ -40,6 +40,12 @@ process RUN_SHIGAPASS {
     """
     # Create output directory first
     mkdir -p ${params.output_dir}/${genome_id}
+
+    # Clean up any existing empty .fa directories that might cause issues
+    if [ -d "${params.output_dir}/${genome_id}/${genome_id}.fa" ] && [ -z "\$(ls -A ${params.output_dir}/${genome_id}/${genome_id}.fa)" ]; then
+        echo "Removing empty directory: ${params.output_dir}/${genome_id}/${genome_id}.fa"
+        rmdir "${params.output_dir}/${genome_id}/${genome_id}.fa"
+    fi
 
     /home/himals/3_resources/tools/shigapass/ShigaPass/SCRIPT/ShigaPass.sh \
         -l ${contig_list} \
