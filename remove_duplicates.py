@@ -9,7 +9,7 @@ def main():
     parser.add_argument('--column', type=str, default='MDU ID', 
                        help='Column name to check for duplicates (default: "MDU ID")')
     parser.add_argument('--remove-duplicates', action='store_true', 
-                       help='Remove duplicate entries if this flag is passed')
+                       help='Remove duplicate entries if this flag is passed. Make sure the extension of the file is .csv')
     args = parser.parse_args()
 
     # Read the CSV file
