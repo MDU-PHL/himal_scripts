@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Generate download.sh and index.html files for FASTQ files in a directory.
+Generate download.sh and index.html files for files in a directory.
 
-This script scans a directory for FASTQ.gz files and creates:
+This script scans a directory for files with specified extensions and creates:
 1. download.sh - wget commands for downloading files
 2. index.html - HTML links for browsing files
 """
@@ -40,8 +40,8 @@ def setup_logging() -> logging.Logger:
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description='Generate download.sh and index.html files for FASTQ files in a directory.',
-        epilog='Example: %(prog)s -d /home/user/public_html/tmp/abc123xyz/',
+        description='Generate download.sh and index.html files for files in a directory.',
+        epilog='Example: %(prog)s -d /home/user/public_html/tmp/abc123xyz/ -e .fastq.gz .fasta',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
@@ -50,7 +50,16 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         required=True,
         metavar='PATH',
-        help='Path to the directory containing FASTQ.gz files (e.g., /home/<user>/public_html/tmp/xxxxxxxxxxxxxxxxxx/)'
+        help='Path to the directory containing files (e.g., /home/<user>/public_html/tmp/xxxxxxxxxxxxxxxxxx/)'
+    )
+    
+    parser.add_argument(
+        '-e', '--extensions',
+        type=str,
+        nargs='+',
+        default=['.fastq.gz'],
+        metavar='EXT',
+        help='File extensions to search for (default: .fastq.gz). Can specify multiple extensions (e.g., -e .fastq.gz .fasta .bam)'
     )
     
     parser.add_argument(
@@ -62,7 +71,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         '--version',
         action='version',
-        version='%(prog)s 1.0.0'
+        version='%(prog)s 1.1.0'
     )
     
     return parser.parse_args()
@@ -107,18 +116,20 @@ def extract_user_and_path(directory_path: str, logger: logging.Logger) -> tuple:
         return None, None
 
 
-def scan_fastq_files(directory: str, logger: logging.Logger) -> List[str]:
+def scan_files(directory: str, extensions: List[str], logger: logging.Logger) -> List[str]:
     """
-    Scan directory for all FASTQ.gz files.
+    Scan directory for all files with specified extensions.
     
     Args:
         directory: Path to the directory to scan
+        extensions: List of file extensions to search for
         logger: Logger instance
         
     Returns:
-        Sorted list of FASTQ.gz filenames
+        Sorted list of matching filenames
     """
     logger.info(f"Scanning directory: {directory}")
+    logger.info(f"Looking for extensions: {', '.join(extensions)}")
     
     try:
         dir_path = Path(directory)
@@ -131,21 +142,32 @@ def scan_fastq_files(directory: str, logger: logging.Logger) -> List[str]:
             logger.error(f"Path is not a directory: {directory}")
             return []
         
-        # Find all .fastq.gz files
-        fastq_files = sorted([f.name for f in dir_path.glob('*.fastq.gz')])
+        # Find all files matching any of the extensions
+        all_files = []
+        for ext in extensions:
+            # Ensure extension starts with a dot
+            if not ext.startswith('.'):
+                ext = '.' + ext
+            pattern = f'*{ext}'
+            matching_files = [f.name for f in dir_path.glob(pattern)]
+            all_files.extend(matching_files)
+            logger.debug(f"Found {len(matching_files)} files matching {pattern}")
         
-        logger.info(f"Found {len(fastq_files)} FASTQ.gz files")
-        logger.debug(f"Files: {fastq_files}")
+        # Remove duplicates and sort
+        unique_files = sorted(set(all_files))
         
-        return fastq_files
+        logger.info(f"Found {len(unique_files)} files total")
+        logger.debug(f"Files: {unique_files}")
         
+        return unique_files
+      
     except Exception as e:
         logger.error(f"Error scanning directory: {e}")
         return []
 
 
 def generate_download_script(directory: str, username: str, relative_path: str, 
-                            fastq_files: List[str], logger: logging.Logger) -> bool:
+                            files: List[str], logger: logging.Logger) -> bool:
     """
     Generate download.sh file with wget commands.
     
@@ -153,7 +175,7 @@ def generate_download_script(directory: str, username: str, relative_path: str,
         directory: Path to the output directory
         username: Username extracted from path
         relative_path: Relative path after public_html
-        fastq_files: List of FASTQ filenames
+        files: List of filenames
         logger: Logger instance
         
     Returns:
@@ -165,17 +187,17 @@ def generate_download_script(directory: str, username: str, relative_path: str,
     try:
         with open(output_file, 'w') as f:
             f.write("#!/bin/bash\n")
-            f.write("# Download script for FASTQ files\n")
+            f.write("# Download script for files\n")
             f.write(f"# Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             
-            for filename in fastq_files:
+            for filename in files:
                 url = f"https://bioinformatics.mdu.unimelb.edu.au/~{username}/{relative_path}/{filename}"
                 f.write(f"wget --continue {url}\n")
         
         # Make the script executable
         os.chmod(output_file, 0o755)
         
-        logger.info(f"Successfully created download.sh with {len(fastq_files)} wget commands")
+        logger.info(f"Successfully created download.sh with {len(files)} wget commands")
         return True
         
     except Exception as e:
@@ -183,13 +205,13 @@ def generate_download_script(directory: str, username: str, relative_path: str,
         return False
 
 
-def generate_index_html(directory: str, fastq_files: List[str], logger: logging.Logger) -> bool:
+def generate_index_html(directory: str, files: List[str], logger: logging.Logger) -> bool:
     """
     Generate index.html file with file links.
     
     Args:
         directory: Path to the output directory
-        fastq_files: List of FASTQ filenames
+        files: List of filenames
         logger: Logger instance
         
     Returns:
@@ -203,22 +225,22 @@ def generate_index_html(directory: str, fastq_files: List[str], logger: logging.
             f.write("<!DOCTYPE html>\n")
             f.write("<html>\n")
             f.write("<head>\n")
-            f.write("    <title>FASTQ Files</title>\n")
+            f.write("    <title>Files</title>\n")
             f.write("    <meta charset='UTF-8'>\n")
             f.write("</head>\n")
             f.write("<body>\n")
-            f.write("    <h1>FASTQ Files</h1>\n")
+            f.write("    <h1>Files</h1>\n")
             f.write(f"    <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>\n")
             f.write("    <ul>\n")
             
-            for filename in fastq_files:
+            for filename in files:
                 f.write(f"        <li><a href='{filename}'>{filename}</a></li>\n")
             
             f.write("    </ul>\n")
             f.write("</body>\n")
             f.write("</html>\n")
         
-        logger.info(f"Successfully created index.html with {len(fastq_files)} file links")
+        logger.info(f"Successfully created index.html with {len(files)} file links")
         return True
         
     except Exception as e:
@@ -242,7 +264,7 @@ def main():
     logger.info("Starting download link generation script")
     logger.info(f"Target directory: {args.directory}")
     
-    # Normalize directory path
+    # Normalise directory path
     directory = os.path.abspath(os.path.expanduser(args.directory))
     
     # Extract username and relative path
@@ -251,18 +273,18 @@ def main():
         logger.error("Failed to extract username and path from directory")
         sys.exit(1)
     
-    # Scan for FASTQ files
-    fastq_files = scan_fastq_files(directory, logger)
-    if not fastq_files:
-        logger.warning("No FASTQ.gz files found in directory")
+    # Scan for files
+    files = scan_files(directory, args.extensions, logger)
+    if not files:
+        logger.warning(f"No files found with extensions: {', '.join(args.extensions)}")
         sys.exit(1)
     
     # Generate download script
     download_success = generate_download_script(directory, username, relative_path, 
-                                                fastq_files, logger)
+                                                files, logger)
     
     # Generate index HTML
-    html_success = generate_index_html(directory, fastq_files, logger)
+    html_success = generate_index_html(directory, files, logger)
     
     # Report results
     if download_success and html_success:
