@@ -14,7 +14,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional, Union
 
 
 def log_message(level: str, message: str) -> None:
@@ -78,15 +78,16 @@ def load_id_mapping(ids_file: Path) -> Dict[str, str]:
     return id_mapping
 
 
-def load_reads_mapping(reads_file: Path) -> Dict[str, Tuple[str, str]]:
+def load_reads_mapping(reads_file: Path, ont: bool = False) -> Dict[str, Tuple[Optional[str], Optional[str]]]:
     """
     Load reads file paths from tab-delimited file.
     
     Args:
         reads_file: Path to reads.tab file
+        ont: If True, expect 2 columns (ID, path) for ONT reads; if False, expect 3 columns (ID, R1, R2)
         
     Returns:
-        Dictionary mapping MDU ID to tuple of (R1_path, R2_path)
+        Dictionary mapping MDU ID to tuple of (R1_path, R2_path) or (path, None) for ONT
         
     Raises:
         FileNotFoundError: If reads file doesn't exist
@@ -99,6 +100,7 @@ def load_reads_mapping(reads_file: Path) -> Dict[str, Tuple[str, str]]:
     
     reads_mapping = {}
     line_num = 0
+    expected_cols = 2 if ont else 3
     
     with open(reads_file, 'r') as f:
         for line in f:
@@ -108,20 +110,33 @@ def load_reads_mapping(reads_file: Path) -> Dict[str, Tuple[str, str]]:
                 continue
                 
             parts = line.split('\t')
-            if len(parts) != 3:
+            if len(parts) != expected_cols:
                 raise ValueError(
-                    f"Invalid format at line {line_num}: expected 3 columns, got {len(parts)}"
+                    f"Invalid format at line {line_num}: expected {expected_cols} columns, got {len(parts)}"
                 )
             
-            mdu_id, r1_path, r2_path = [p.strip() for p in parts]
-            
-            if not mdu_id or not r1_path or not r2_path:
-                raise ValueError(f"Empty field at line {line_num}")
-            
-            if mdu_id in reads_mapping:
-                log_message("WARNING", f"Duplicate MDU ID '{mdu_id}' at line {line_num}")
-            
-            reads_mapping[mdu_id] = (r1_path, r2_path)
+            if ont:
+                # ONT format: ID and single path
+                mdu_id, read_path = [p.strip() for p in parts]
+                
+                if not mdu_id or not read_path:
+                    raise ValueError(f"Empty field at line {line_num}")
+                
+                if mdu_id in reads_mapping:
+                    log_message("WARNING", f"Duplicate MDU ID '{mdu_id}' at line {line_num}")
+                
+                reads_mapping[mdu_id] = (read_path, None)
+            else:
+                # Paired-end format: ID, R1, R2
+                mdu_id, r1_path, r2_path = [p.strip() for p in parts]
+                
+                if not mdu_id or not r1_path or not r2_path:
+                    raise ValueError(f"Empty field at line {line_num}")
+                
+                if mdu_id in reads_mapping:
+                    log_message("WARNING", f"Duplicate MDU ID '{mdu_id}' at line {line_num}")
+                
+                reads_mapping[mdu_id] = (r1_path, r2_path)
     
     log_message("INFO", f"Loaded {len(reads_mapping)} read file mappings")
     return reads_mapping
@@ -218,16 +233,16 @@ def copy_and_rename_file(
 def process_sample(
     mdu_id: str,
     ausmdu_id: str,
-    reads_paths: Tuple[str, str],
+    reads_paths: Tuple[Optional[str], Optional[str]],
     output_dir: Path
 ) -> Tuple[str, bool, List[str]]:
     """
-    Process a single sample (copy and rename R1 and R2 files).
+    Process a single sample (copy and rename R1 and R2 files, or single ONT file).
     
     Args:
         mdu_id: MDU ID
         ausmdu_id: AUSMDU ID
-        reads_paths: Tuple of (R1_path, R2_path)
+        reads_paths: Tuple of (R1_path, R2_path) or (path, None) for ONT
         output_dir: Output directory
         
     Returns:
@@ -237,22 +252,23 @@ def process_sample(
     messages = []
     success = True
     
-    # Process R1
+    # Process R1 (or single ONT file)
     r1_success, r1_msg = copy_and_rename_file(r1_path, output_dir, mdu_id, ausmdu_id)
     messages.append(r1_msg)
     success = success and r1_success
     
-    # Process R2
-    r2_success, r2_msg = copy_and_rename_file(r2_path, output_dir, mdu_id, ausmdu_id)
-    messages.append(r2_msg)
-    success = success and r2_success
+    # Process R2 (only for paired-end reads)
+    if r2_path is not None:
+        r2_success, r2_msg = copy_and_rename_file(r2_path, output_dir, mdu_id, ausmdu_id)
+        messages.append(r2_msg)
+        success = success and r2_success
     
     return mdu_id, success, messages
 
 
 def validate_inputs(
     id_mapping: Dict[str, str],
-    reads_mapping: Dict[str, Tuple[str, str]]
+    reads_mapping: Dict[str, Tuple[Optional[str], Optional[str]]]
 ) -> Tuple[List[str], List[str]]:
     """
     Validate that IDs and reads are properly matched.
@@ -287,8 +303,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
+  # Basic usage (paired-end reads)
   %(prog)s -i ids.tab -r reads.tab -o output_dir
+  
+  # ONT reads (single file per sample)
+  %(prog)s -i ids.tab -r reads_ont.tab -o output_dir --ont
   
   # With parallel processing (4 workers)
   %(prog)s -i ids.tab -r reads.tab -o output_dir -p 4
@@ -301,9 +320,13 @@ Input file formats:
     MDU_ID  AUSMDU_ID
     2004-111111 AUSMDU00012111
   
-  reads.tab (tab-delimited, no header):
+  reads.tab for paired-end (tab-delimited, no header):
     MDU_ID  R1_PATH   R2_PATH
     2004-111111 /path/to/R1.fastq.gz /path/to/R2.fastq.gz
+  
+  reads.tab for ONT with --ont flag (tab-delimited, no header):
+    MDU_ID  PATH
+    2004-111111 /path/to/reads.fastq.gz
         """
     )
     
@@ -332,6 +355,12 @@ Input file formats:
     )
     
     parser.add_argument(
+        '--ont',
+        action='store_true',
+        help='ONT mode: reads.tab has 2 columns (ID, path) instead of 3 (ID, R1, R2)'
+    )
+    
+    parser.add_argument(
         '-p', '--parallel',
         type=int,
         default=4,
@@ -346,7 +375,7 @@ Input file formats:
     try:
         # Load mappings
         id_mapping = load_id_mapping(args.ids)
-        reads_mapping = load_reads_mapping(args.reads)
+        reads_mapping = load_reads_mapping(args.reads, ont=args.ont)
         
         # Validate inputs
         log_message("INFO", "Validating inputs")
