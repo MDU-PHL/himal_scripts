@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+"""
+Script to concatenate FASTQ files from ONT sequencing runs based on a samplesheet.
+The script reads a samplesheet CSV file containing MDU IDs and barcodes, locates 
+the corresponding FASTQ files,and concatenates them into single files per MDU ID 
+in a structured output directory.
+Author: Himal Shrestha
+"""
 
 import argparse
 import csv
@@ -26,13 +33,14 @@ def barcode_to_directory(barcode):
         return f"barcode{number}"
     return None
 
-def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir):
+def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir, run_id):
     """Concatenate FASTQ files based on samplesheet information."""
     
-    # Create output directory if it doesn't exist
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        log_message(f"Created output directory: {output_dir}")
+    # Create output directory structure: output_dir/run_id/
+    run_output_dir = os.path.join(output_dir, run_id)
+    if not os.path.exists(run_output_dir):
+        os.makedirs(run_output_dir)
+        log_message(f"Created output directory: {run_output_dir}")
     
     # Read samplesheet
     with open(samplesheet_path, 'r') as csv_file:
@@ -49,7 +57,9 @@ def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir):
             
             # Define paths
             barcode_path = os.path.join(fastq_dir, barcode_dir)
-            output_file = os.path.join(output_dir, f"{mdu_id}.fastq.gz")
+            mdu_output_dir = os.path.join(run_output_dir, mdu_id)
+            os.makedirs(mdu_output_dir, exist_ok=True)
+            output_file = os.path.join(mdu_output_dir, f"{mdu_id}.fastq.gz")
             
             # Check if barcode directory exists
             if not os.path.exists(barcode_path):
@@ -80,10 +90,10 @@ def main():
         epilog="""
 Examples:
   # Basic usage
-  python3 ont_fastq_concatenator.py -s samplesheet.csv -f /path/to/fastq -o ont_reads
+  python3 ont_fastq_concatenator.py -s samplesheet.csv -f /path/to/fastq -o ont_reads -r RUN001
 
   # Using abbreviated arguments
-  python3 ont_fastq_concatenator.py -s samplesheet.csv -f /path/to/fastq -o ont_reads
+  python3 ont_fastq_concatenator.py -s samplesheet.csv -f /path/to/fastq -o ont_reads -r RUN001
         """
     )
     
@@ -91,8 +101,10 @@ Examples:
                         help="Path to the samplesheet CSV file")
     parser.add_argument("-f", "--fastq-dir", required=True,
                         help="Path to the directory containing barcode directories with FASTQ files")
-    parser.add_argument("-o", "--output-dir", default="ont_reads",
-                        help="Output directory for concatenated FASTQ files (default: ont_reads)")
+    parser.add_argument("-o", "--output-dir", default="/home/mdu/ont_reads",
+                        help="Output directory for concatenated FASTQ files (default: /home/mdu/ont_reads)")
+    parser.add_argument("-r", "--run-id", required=True,
+                        help="Run ID for organising output files")
     
     args = parser.parse_args()
     
@@ -103,7 +115,7 @@ Examples:
     if not os.path.exists(args.fastq_dir):
         sys.exit(f"Error: FASTQ directory {args.fastq_dir} does not exist")
     
-    concatenate_fastq_files(args.samplesheet, args.fastq_dir, args.output_dir)
+    concatenate_fastq_files(args.samplesheet, args.fastq_dir, args.output_dir, args.run_id)
 
 if __name__ == "__main__":
     main()
