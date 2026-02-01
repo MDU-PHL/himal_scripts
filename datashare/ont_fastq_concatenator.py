@@ -44,9 +44,9 @@ def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir, run_id):
     
     # Read samplesheet
     with open(samplesheet_path, 'r') as csv_file:
-        reader = csv.DictReader(csv_file)
+        reader = csv.DictReader(csv_file, delimiter='\t')
         for row in reader:
-            mdu_id = row['MDU ID'].strip()
+            mdu_id = row['MDU_ID'].strip()
             barcode = row['Barcode'].strip()
             
             # Convert barcode format
@@ -90,15 +90,15 @@ def main():
         epilog="""
 Examples:
   # Basic usage
-  python3 ont_fastq_concatenator.py -s samplesheet.csv -f /path/to/fastq -o ont_reads -r RUN001
+  python3 ont_fastq_concatenator.py -s samplesheet.tsv -f /path/to/fastq -o ont_reads -r RUN001
 
   # Using abbreviated arguments
-  python3 ont_fastq_concatenator.py -s samplesheet.csv -f /path/to/fastq -o ont_reads -r RUN001
+  python3 ont_fastq_concatenator.py -s samplesheet.tsv -f /path/to/fastq -o ont_reads -r RUN001
         """
     )
     
     parser.add_argument("-s", "--samplesheet", required=True,
-                        help="Path to the samplesheet CSV file")
+                        help="Path to the samplesheet TSV file")
     parser.add_argument("-f", "--fastq-dir", required=True,
                         help="Path to the directory containing barcode directories with FASTQ files")
     parser.add_argument("-o", "--output-dir", default="/home/mdu/ont_reads",
