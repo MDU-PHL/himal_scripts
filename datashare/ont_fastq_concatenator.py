@@ -42,6 +42,8 @@ def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir, run_id):
         os.makedirs(run_output_dir)
         log_message(f"Created output directory: {run_output_dir}")
     
+    skipped_files = []
+    
     # Read samplesheet
     with open(samplesheet_path, 'r') as csv_file:
         reader = csv.DictReader(csv_file, delimiter='\t')
@@ -61,6 +63,12 @@ def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir, run_id):
             os.makedirs(mdu_output_dir, exist_ok=True)
             output_file = os.path.join(mdu_output_dir, f"{mdu_id}.fastq.gz")
             
+            # Check if output file already exists
+            if os.path.exists(output_file):
+                log_message(f"Skipping {mdu_id}: Output file already exists at {output_file}")
+                skipped_files.append(output_file)
+                continue
+            
             # Check if barcode directory exists
             if not os.path.exists(barcode_path):
                 log_message(f"Warning: Directory {barcode_path} not found. Skipping {mdu_id}.")
@@ -73,7 +81,7 @@ def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir, run_id):
                 continue
             
             # Concatenate files
-            log_message(f"Concatenating fastq files for {barcode_dir}")
+            log_message(f"Concatenating fastq files for {barcode_dir}, MDU ID: {mdu_id}")
             cmd = f"cat {barcode_path}/*.fastq.gz > {output_file}"
             log_message(f"Command executed: {cmd}")
             
@@ -82,6 +90,12 @@ def concatenate_fastq_files(samplesheet_path, fastq_dir, output_dir, run_id):
                 log_message(f"Successfully created {output_file}")
             except subprocess.CalledProcessError as e:
                 log_message(f"Error executing command: {e}")
+    
+    # Log summary of skipped files
+    if skipped_files:
+        log_message(f"\nSummary: {len(skipped_files)} file(s) were skipped (already exist, pleaes check):")
+        for skipped in skipped_files:
+            log_message(f"  - {skipped}")
 
 def main():
     parser = argparse.ArgumentParser(
