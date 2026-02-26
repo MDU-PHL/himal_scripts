@@ -32,8 +32,9 @@ def main():
 
             # Remove duplicates and save the cleaned file
             df_cleaned = df.drop_duplicates(subset=args.column, keep='first')
-            df_cleaned.to_csv(args.filename, index=False)
+            df_cleaned.to_csv(args.filename, index=False, float_format='%.0f')
             print(f"Duplicate entries removed and saved to {args.filename}")
+
         else:
             print(f"To remove duplicates, run the script with the '--remove-duplicates' flag.")
     else:
