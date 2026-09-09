@@ -43,6 +43,10 @@ mdu contigs --idfile list.txt --assemblier shovill > contigs.tab
 # change 1.trim to 2.trim in column 2, and 2.trim to 1.trim in column 3
 awk 'BEGIN{{OFS=FS="\\t"}} {{gsub("2\\\\.trim","1.trim",$2); gsub("1\\\\.trim","2.trim",$3); print}}' reads_raw.tab > reads.tab
 
+# check if run-ids match between reads and contigs files
+ca bioinf_env
+bash /home/hccooper/helena_scripts/helper_scripts/check-run-ids.sh
+
 wc -l reads.tab contigs.tab list.txt
 
 grep {reference} contigs.tab
