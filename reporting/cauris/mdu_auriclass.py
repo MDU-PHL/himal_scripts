@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+import csv
+import subprocess
+import os
+import glob
+import argparse
+from datetime import datetime
+
+# Parse command-line arguments.
+parser = argparse.ArgumentParser(
+    description="Assign isolates to clades using auriclass and update clade files."
+)
+parser.add_argument(
+    "--reads",
+    required=True,
+    help="Path to the input reads.tab file (tab-delimited with Isolate_ID, reads1, reads2).",
+)
+parser.add_argument(
+    "--contigs",
+    required=True,
+    help="Path to the input contigs.tab file (tab-delimited with Isolate_ID, contigs).",
+)
+parser.add_argument(
+    "--clade_dir",
+    required=True,
+    help="Path to the directory where the current clade files exist. New entries will be appended here.",
+)
+parser.add_argument(
+    "--control_path",
+    default="/path/to/Cand_auris_V3_genomic.fna.gz",
+    help="Path to the control reference genome (default: /path/to/Cand_auris_V3_genomic.fna.gz).",
+)
+args = parser.parse_args()
+
+# Assign command-line arguments to variables.
+READS_TAB = args.reads
+CONTIGS_TAB = args.contigs
+CLADE_DIR = args.clade_dir
+CONTROL_PATH = args.control_path
+
+def log_msg(msg_type, message):
+    """Log message in the format [YYYY-mm-dd HH:MM:SS] <type> <message>."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] [{msg_type.upper()}] {message}")
+
+# Ensure the clade directory exists.
+if not os.path.exists(CLADE_DIR):
+    os.makedirs(CLADE_DIR)
+
+# Define allowed clades.
+allowed_clades = ["Clade I", "Clade II", "Clade III", "Clade IV", "Clade V", "Clade VI"]
+
+# Summary file within clade directory and consolidated results_auriclass.tsv in CWD.
+SUMMARY_FILE = os.path.join(CLADE_DIR, "Clade_designations.tab")
+RESULTS_AURI_FILE = "results_auriclass.tsv"
+
+# Global dictionary to track which isolates have been added to each file.
+file_written_ids = {}
+
+def append_line_if_not_exists(filename, line, isolate_id, header_line=None):
+    """
+    Append 'line' to file 'filename' only if 'isolate_id' is not already present.
+    If header_line is provided, it will be used to skip over a header line when reading existing entries.
+    Returns True if the line was appended, False if it was skipped.
+    """
+    if filename not in file_written_ids:
+        existing_ids = set()
+        if os.path.exists(filename):
+            with open(filename, "r") as f:
+                for l in f:
+                    if not l.strip():
+                        continue
+                    if header_line is not None and l.strip() == header_line.strip():
+                        continue
+                    existing_isolate = l.split("\t")[0].strip()
+                    existing_ids.add(existing_isolate)
+        file_written_ids[filename] = existing_ids
+
+    if isolate_id in file_written_ids[filename]:
+        log_msg("INFO", f"{isolate_id} already exists in {filename}. Skipping.")
+        return False
+    else:
+        with open(filename, "a") as out_f:
+            out_f.write(line)
+        file_written_ids[filename].add(isolate_id)
+        return True
+
+def append_result_row(filename, header, row, isolate_id):
+    """
+    Append result row to results_auriclass.tsv only if isolate_id is not already present.
+    Initializes file with header if it doesn't exist yet.
+    """
+    header_line = "\t".join(header) + "\n"
+    row_line = "\t".join(row) + "\n"
+    if not os.path.exists(filename):
+        with open(filename, "w") as fh:
+            fh.write(header_line)
+        file_written_ids[filename] = set()
+    return append_line_if_not_exists(filename, row_line, isolate_id, header_line=header_line)
+
+# Create the summary file with header if it doesn't exist.
+if not os.path.exists(SUMMARY_FILE):
+    with open(SUMMARY_FILE, "w") as summary_fh:
+        summary_fh.write("Isolate_ID\tClade\n")
+    file_written_ids[SUMMARY_FILE] = set()
+
+# Load the reads file into a dictionary:
+# Format: { Isolate_ID: (reads1, reads2) }
+reads_dict = {}
+with open(READS_TAB, "r") as fh:
+    reader = csv.reader(fh, delimiter="\t")
+    for row in reader:
+        if not row or row[0].startswith("#"):
+            continue
+        try:
+            isolate_id, reads1, reads2 = row
+        except ValueError:
+            log_msg("WARNING", f"Skipping malformed row in {READS_TAB}: {row}")
+            continue
+        reads_dict[isolate_id] = (reads1, reads2)
+
+# Load the contigs file into a dictionary:
+# Format: { Isolate_ID: contigs }
+contigs_dict = {}
+with open(CONTIGS_TAB, "r") as fh:
+    reader = csv.reader(fh, delimiter="\t")
+    for row in reader:
+        if not row or row[0].startswith("#"):
+            continue
+        try:
+            isolate_id, contigs = row
+        except ValueError:
+            log_msg("WARNING", f"Skipping malformed row in {CONTIGS_TAB}: {row}")
+            continue
+        contigs_dict[isolate_id] = contigs
+
+# Track individual report.*.log files generated by auriclass across runs
+auriclass_log_files = []
+
+def run_auriclass(input_path, sample_id):
+    """
+    Run auriclass on input_path (reads1 or control genome).
+    Parses report.tsv, sets row[0] to sample_id, and tracks generated log files.
+    Returns (clade, header, row).
+    """
+    report_path = "report.tsv"
+    if os.path.exists(report_path):
+        try:
+            os.remove(report_path)
+        except OSError:
+            pass
+
+    existing_logs = set(glob.glob("report.*.log"))
+
+    cmd = ["auriclass", input_path]
+    log_msg("INFO", f"Running auriclass for {sample_id}: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        log_msg("ERROR", f"Error running auriclass for {sample_id}:\n{result.stderr}")
+        return None, None, None
+
+    # Track newly created log files from this run
+    current_logs = set(glob.glob("report.*.log"))
+    new_logs = sorted(list(current_logs - existing_logs))
+    for log_file in new_logs:
+        if log_file not in auriclass_log_files:
+            auriclass_log_files.append(log_file)
+
+    if not os.path.exists(report_path):
+        log_msg("ERROR", f"Report file {report_path} not found for {sample_id}")
+        return None, None, None
+
+    with open(report_path, "r") as rep_fh:
+        reader = csv.reader(rep_fh, delimiter="\t")
+        header = next(reader, None)
+        if header is None:
+            log_msg("ERROR", f"No header found in {report_path} for {sample_id}")
+            return None, None, None
+        row = next(reader, None)
+        if row is None or len(row) < 2:
+            log_msg("ERROR", f"Report file {report_path} does not contain expected columns for {sample_id}")
+            return None, None, None
+
+    # Replace default generic 'isolate' sample name with real sample_id
+    row[0] = sample_id
+    clade = row[1].strip()
+    log_msg("INFO", f"Extracted clade for {sample_id}: {clade}")
+
+    return clade, header, row
+
+# 1. Process each isolate from reads_dict (reads.tab is preferred over contigs.tab for auriclass)
+for isolate_id, (reads1, reads2) in reads_dict.items():
+    log_msg("INFO", f"Processing sample {isolate_id} ...")
+
+    # Run auriclass using the first reads file (reads1)
+    clade, header, row = run_auriclass(reads1, isolate_id)
+    if row is None:
+        log_msg("WARNING", f"Skipping {isolate_id} due to auriclass error.")
+        continue
+
+    # Append to results_auriclass.tsv
+    append_result_row(RESULTS_AURI_FILE, header, row, isolate_id)
+
+    # Check if the clade is one of the allowed clades.
+    if clade not in allowed_clades:
+        log_msg("WARNING", f"Clade '{clade}' for {isolate_id} is not in allowed list. Skipping clade directory updates.")
+        continue
+
+    # Prepare output file names for the clade.
+    safe_clade = clade.replace(" ", "_")
+    clade_reads_file = os.path.join(CLADE_DIR, f"{safe_clade}.reads.tab")
+    clade_contigs_file = os.path.join(CLADE_DIR, f"{safe_clade}.contigs.tab")
+
+    # Prepare lines to append.
+    reads_line = f"{isolate_id}\t{reads1}\t{reads2}\n"
+    contigs_path = contigs_dict.get(isolate_id)
+    contigs_line = f"{isolate_id}\t{contigs_path}\n" if contigs_path else None
+    summary_line = f"{isolate_id}\t{clade}\n"
+
+    # Append reads entry
+    append_line_if_not_exists(clade_reads_file, reads_line, isolate_id)
+
+    # Append contigs entry
+    if contigs_line:
+        append_line_if_not_exists(clade_contigs_file, contigs_line, isolate_id)
+    else:
+        log_msg("WARNING", f"No contigs entry found for {isolate_id}")
+
+    # Append summary result (Isolate_ID and Clade)
+    append_line_if_not_exists(SUMMARY_FILE, summary_line, isolate_id, header_line="Isolate_ID\tClade")
+
+    log_msg("INFO", f"Assigned sample {isolate_id} to {clade} and updated clade files.")
+
+# 2. Run positive control (always executed, last entry in results_auriclass.tsv, no changes to CLADE_DIR)
+log_msg("INFO", f"Running positive control: {CONTROL_PATH}")
+if os.path.exists(CONTROL_PATH):
+    control_base = os.path.basename(CONTROL_PATH)
+    if control_base.endswith(".gz"):
+        control_base = control_base[:-3]
+    control_id = os.path.splitext(control_base)[0]
+
+    control_clade, control_header, control_row = run_auriclass(CONTROL_PATH, control_id)
+    if control_row:
+        log_msg("INFO", f"Positive Control Clade Result ({control_id}): {control_clade}")
+        append_result_row(RESULTS_AURI_FILE, control_header, control_row, control_id)
+    else:
+        log_msg("ERROR", f"Positive control execution failed for {CONTROL_PATH}")
+else:
+    log_msg("WARNING", f"Control genome file not found at: {CONTROL_PATH}. Skipping control execution.")
+
+# 3. Concatenate all individual log files into a single auriclass.YYYY-mm-dd_HH-MM-SS.log
+all_logs_to_concat = []
+for f in auriclass_log_files:
+    if f not in all_logs_to_concat and os.path.exists(f):
+        all_logs_to_concat.append(f)
+for f in sorted(glob.glob("report.*.log")):
+    if f not in all_logs_to_concat and os.path.exists(f):
+        all_logs_to_concat.append(f)
+
+if all_logs_to_concat:
+    combined_log_filename = f"auriclass.{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+    with open(combined_log_filename, "w") as out_log:
+        for log_f in all_logs_to_concat:
+            with open(log_f, "r") as in_log:
+                out_log.write(in_log.read())
+            try:
+                os.remove(log_f)
+            except OSError:
+                pass
+    log_msg("INFO", f"Concatenated {len(all_logs_to_concat)} log files into {combined_log_filename} and deleted individual log files.")
+else:
+    log_msg("INFO", "No individual auriclass log files found to concatenate.")
+
+log_msg("INFO", "Pipeline completed successfully.")
